@@ -1,0 +1,133 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * Organization = tenant
+ */
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  members  Member[]
+  payments Payment[]
+}
+
+/**
+ * User = staff/admin inside an org
+ */
+model User {
+  id       String   @id @default(cuid())
+  email    String   @unique
+  password String // hashed password
+  role     UserRole @default(STAFF)
+
+  fullName String
+  staffId  String
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  payments  Payment[]
+
+  @@unique([orgId, staffId])
+  @@index([orgId])
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+/**
+ * Member = org's customer/member
+ */
+model Member {
+  id       String  @id @default(cuid())
+  name     String
+  phone    String?
+  whatsapp String?
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+}
+
+/**
+ * Payment = payment made by a member in an org
+ */
+model Payment {
+  id String @id @default(cuid())
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  amount   Int // in smallest unit (cents/kobo)
+  currency String // 'EUR', 'NGN', etc.
+  method   PaymentMethod
+  status   PaymentStatus @default(PAID)
+
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  receipt Receipt?
+  user    User?    @relation(fields: [userId], references: [id])
+  userId  String?
+
+  @@index([orgId])
+  @@index([memberId])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING_APPROVAL
+  PAID
+  REFUNDED
+  FAILED
+  CANCELLED
+}
+
+/**
+ * Receipt = generated PDF + metadata
+ */
+model Receipt {
+  id String @id @default(cuid())
+
+  paymentId String  @unique
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  pdfPath   String // path/URL to PDF
+  sentVia   String? // 'whatsapp' | 'email' | null
+  sentTo    String? // phone/email
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+}
